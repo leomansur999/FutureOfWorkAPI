@@ -1,4 +1,4 @@
-name: Security - OWASP ZAP DAST
+name: ZAP DAST Scan
 
 on:
   push:
@@ -10,51 +10,32 @@ jobs:
   zap_scan:
     runs-on: ubuntu-latest
 
-    services:
-      api:
-        image: mcr.microsoft.com/dotnet/aspnet:8.0
-        ports:
-          - 5000:5000
-        options: >-
-          --health-cmd="curl --fail http://localhost:5000/swagger/index.html || exit 1"
-          --health-interval=5s
-          --health-timeout=3s
-          --health-retries=20
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build API
-        run: |
-          dotnet publish -c Release -o out
+      - name: Build API image
+        run: docker build -t api-image .
 
-      - name: Copy API into container service
+      - name: Run API container
         run: |
-          docker cp out/. $(docker ps -q -f name=api):/app
-
-      - name: Start API inside container
-        run: |
-          docker exec $(docker ps -q -f name=api) bash -c \
-            "dotnet /app/FutureOfWorkAPI.dll --urls http://0.0.0.0:5000 &"
-
-      - name: Wait for API health
-        run: sleep 20
+          docker run -d --name api \
+            -p 5000:5000 api-image
+          sleep 15
 
       - name: Pull ZAP image
         run: docker pull ghcr.io/zaproxy/zaproxy:stable
 
-      - name: Run OWASP ZAP Baseline Scan
+      - name: Run ZAP Baseline Scan
         run: |
           mkdir -p zap-report
           chmod -R 777 zap-report
-
           docker run --rm \
-            --network=host \
+            --network="host" \
             -v "${{ github.workspace }}/zap-report:/zap" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-              -t http://api:5000/swagger/index.html \
+              -t http://localhost:5000/swagger/index.html \
               -r zap-report.html \
               -I
         continue-on-error: true
