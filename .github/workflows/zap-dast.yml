@@ -1,66 +1,62 @@
-name: Security - OWASP ZAP DAST
+name: ZAP DAST Scan
 
 on:
   push:
-    branches: [ main ]
+    branches: [ ciber ]
   pull_request:
-    branches: [ main ]
+    branches: [ ciber ]
+
+permissions:
+  contents: read
 
 jobs:
   zap_scan:
     runs-on: ubuntu-latest
 
-    services:
-      api:
-        image: mcr.microsoft.com/dotnet/aspnet:8.0
-        ports:
-          - 5000:5000
-        options: >-
-          --health-cmd="curl --fail http://localhost:5000/swagger/index.html || exit 1"
-          --health-interval=5s
-          --health-timeout=3s
-          --health-retries=20
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build API
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build project
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Start API
         run: |
-          dotnet publish -c Release -o out
+          dotnet run --configuration Release --no-build --urls "http://0.0.0.0:5000" &
+          echo $! > api.pid
 
-      - name: Copy API into container service
-        run: |
-          docker cp out/. $(docker ps -q -f name=api):/app
+      - name: Wait API up
+        run: sleep 25
 
-      - name: Start API inside container
-        run: |
-          docker exec $(docker ps -q -f name=api) bash -c \
-            "dotnet /app/FutureOfWorkAPI.dll --urls http://0.0.0.0:5000 &"
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.10.0
+        with:
+          target: 'http://localhost:5000/swagger/index.html'
+          cmd_options: '-I'
+          allow_issue_writing: 'false'
 
-      - name: Wait for API health
-        run: sleep 20
+      - name: List generated files
+        if: always()
+        run: ls -R
 
-      - name: Pull ZAP image
-        run: docker pull ghcr.io/zaproxy/zaproxy:stable
-
-      - name: Run OWASP ZAP Baseline Scan
-        run: |
-          mkdir -p zap-report
-          chmod -R 777 zap-report
-
-          docker run --rm \
-            --network=host \
-            -v "${{ github.workspace }}/zap-report:/zap" \
-            ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py \
-              -t http://api:5000/swagger/index.html \
-              -r zap-report.html \
-              -I
-        continue-on-error: true
-
-      - name: Upload ZAP report
+      - name: Upload ZAP HTML report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
-          path: zap-report/zap-report.html
+          path: report_html.html
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f api.pid ]; then
+            kill "$(cat api.pid)" || true
+          fi
