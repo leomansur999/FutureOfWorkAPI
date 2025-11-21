@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ ciber ]
 
+permissions:
+  contents: read
+
 jobs:
   zap_scan:
     runs-on: ubuntu-latest
@@ -26,7 +29,9 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: Start API
-        run: dotnet run --configuration Release --no-build --urls "http://0.0.0.0:5000" &
+        run: |
+          dotnet run --configuration Release --no-build --urls "http://0.0.0.0:5000" &
+          echo $! > api.pid
 
       - name: Wait API up
         run: sleep 25
@@ -36,10 +41,22 @@ jobs:
         with:
           target: 'http://localhost:5000/swagger/index.html'
           cmd_options: '-I'
-          allow_issue_writing: false  # <-- ESSA LINHA É O QUE MATA O ERRO
+          allow_issue_writing: 'false'
+
+      - name: List generated files
+        if: always()
+        run: ls -R
 
       - name: Upload ZAP HTML report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
           path: report_html.html
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f api.pid ]; then
+            kill "$(cat api.pid)" || true
+          fi
