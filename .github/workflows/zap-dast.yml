@@ -27,7 +27,7 @@ jobs:
 
       - name: Start API
         run: dotnet run --configuration Release --no-build --urls "http://0.0.0.0:5000" &
-      
+
       - name: Wait API up
         run: sleep 25
 
@@ -36,7 +36,8 @@ jobs:
         with:
           target: 'http://localhost:5000/swagger/index.html'
           cmd_options: '-I'
-      
+          allow_issue_writing: false  # <-- ESSA LINHA É O QUE MATA O ERRO
+
       - name: Upload ZAP HTML report
         uses: actions/upload-artifact@v4
         with:
