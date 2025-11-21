@@ -40,7 +40,7 @@ jobs:
             -v "${{ github.workspace }}/zap-report:/zap/wrk" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-              -t http://localhost:5000 \
+             -t http://localhost:5000/swagger/index.html
               -r zap-report.html \
               -I
         continue-on-error: true
